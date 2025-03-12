@@ -4,21 +4,11 @@
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
-#include <new>
-#include <unistd.h>
+#include <functional>
 #include <unordered_map>
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MOD_CLEAN(mask) ((mask) & ~(numlock | LockMask))
-
-#define WS_SEL(W) list = ws_list[ws = W]
-#define WS_SAVE(W) ws_list[W] = list
-#define win for (client *t = nullptr, *c = list; c && t != list->prev; t = c, c = c->next)
-
-#define WIN_SIZE(W, gx, gy, gw, gh)                                                                                    \
-  Window root_;                                                                                                        \
-  unsigned int border_, depth_;                                                                                        \
-  XGetGeometry(d, (W), &root_, (gx), (gy), (gw), (gh), &border_, &depth_);
 
 typedef struct {
   const char **com;
@@ -39,6 +29,27 @@ typedef struct client {
   unsigned int ww, wh;
   Window w;
 } client;
+
+void ws_select(int W, client *&list, int &ws, client *ws_list[]) { list = ws_list[ws = W]; }
+
+void ws_save(int W, client *list, client *ws_list[]) { ws_list[W] = list; }
+
+void win_iterate(client *list, std::function<void(client *)> func) {
+  if (!list) return;
+  client *t = nullptr;
+  client *c = list;
+  while (c && t != list->prev) {
+    func(c);
+    t = c;
+    c = c->next;
+  }
+}
+
+void win_get_size(Display *d, Window W, int *gx, int *gy, unsigned int *gw, unsigned int *gh) {
+  Window root_;
+  unsigned int border_, depth_;
+  XGetGeometry(d, W, &root_, gx, gy, gw, gh, &border_, &depth_);
+}
 
 void button_press(XEvent *e);
 void button_release(XEvent *e);
@@ -106,9 +117,10 @@ void notify_destroy(XEvent *e) {
 
 void notify_enter(XEvent *e) {
   while (XCheckTypedEvent(d, EnterNotify, e))
-    for (client *t = 0, *c = list; c && t != list->prev; t = c, c = c->next) {
-      if (c->w == e->xcrossing.window) win_focus(c);
-    }
+    ;
+  win_iterate(list, [&](client *c) {
+    if (c->w == e->xcrossing.window) win_focus(c);
+  });
 }
 
 void notify_motion(XEvent *e) {
@@ -133,7 +145,7 @@ void key_press(XEvent *e) {
 void button_press(XEvent *e) {
   if (!e->xbutton.subwindow) return;
 
-  WIN_SIZE(e->xbutton.subwindow, &wx, &wy, &ww, &wh);
+  win_get_size(d, e->xbutton.subwindow, &wx, &wy, &ww, &wh);
   XRaiseWindow(d, e->xbutton.subwindow);
   mouse = e->xbutton;
 }
@@ -161,12 +173,14 @@ void win_add(Window w) {
     list = c;
     list->prev = list->next = list;
   }
-  WS_SAVE(ws);
+  ws_save(ws, list, ws_list);
 }
 
 void win_del(Window w) {
   client *x = nullptr;
-  win if (c->w == w) x = c;
+  win_iterate(list, [&](client *c) {
+    if (c->w == w) x = c;
+  });
 
   if (!list || !x) return;
   if (x->prev == x) list = nullptr;
@@ -175,7 +189,7 @@ void win_del(Window w) {
   if (x->prev) x->prev->next = x->next;
 
   delete x;
-  WS_SAVE(ws);
+  ws_save(ws, list, ws_list);
 }
 
 void win_kill(const Arg arg) {
@@ -186,7 +200,7 @@ void win_center(const Arg arg) {
   if (!cur) return;
 
   int dummy_x, dummy_y;
-  WIN_SIZE(cur->w, &dummy_x, &dummy_y, &ww, &wh);
+  win_get_size(d, cur->w, &dummy_x, &dummy_y, &ww, &wh);
   XMoveWindow(d, cur->w, (sw - ww) / 2, (sh - wh) / 2);
 }
 
@@ -194,7 +208,7 @@ void win_fs(const Arg arg) {
   if (!cur) return;
 
   if ((cur->f = !cur->f)) {
-    WIN_SIZE(cur->w, &cur->wx, &cur->wy, &cur->ww, &cur->wh);
+    win_get_size(d, cur->w, &cur->wx, &cur->wy, &cur->ww, &cur->wh);
     XMoveResizeWindow(d, cur->w, 0, 0, sw, sh);
   } else {
     XMoveResizeWindow(d, cur->w, cur->wx, cur->wy, cur->ww, cur->wh);
@@ -205,14 +219,14 @@ void win_to_ws(const Arg arg) {
   int tmp = ws;
   if (arg.i == tmp) return;
 
-  WS_SEL(arg.i);
+  ws_select(arg.i, list, ws, ws_list);
   win_add(cur->w);
-  WS_SAVE(arg.i);
+  ws_save(arg.i, list, ws_list);
 
-  WS_SEL(tmp);
+  ws_select(tmp, list, ws, ws_list);
   win_del(cur->w);
   XUnmapWindow(d, cur->w);
-  WS_SAVE(tmp);
+  ws_save(tmp, list, ws_list);
 
   if (list) win_focus(list);
 }
@@ -237,7 +251,7 @@ void ws_go(const Arg arg) {
   ws = arg.i;
   list = ws_list[ws];
 
-  for (client *t = nullptr, *c = list; c && t != list->prev; t = c, c = c->next) {
+  win_iterate(list, [&](client *c) {
     char *winame = nullptr;
     if (XFetchName(d, c->w, &winame) && winame != nullptr) {
       if (strncmp(winame, barname, strlen(barname)) != 0) {
@@ -247,10 +261,10 @@ void ws_go(const Arg arg) {
     } else {
       XMapWindow(d, c->w);
     }
-  }
+  });
 
   ws_list[tmp] = ws_list[tmp];
-  for (client *t = nullptr, *c = ws_list[tmp]; c && t != ws_list[tmp]->prev; t = c, c = c->next) {
+  win_iterate(ws_list[tmp], [&](client *c) {
     char *winame = nullptr;
     if (XFetchName(d, c->w, &winame) && winame != nullptr) {
       if (strncmp(winame, barname, strlen(barname)) != 0) {
@@ -260,7 +274,7 @@ void ws_go(const Arg arg) {
     } else {
       XUnmapWindow(d, c->w);
     }
-  }
+  });
 
   if (list)
     win_focus(list);
@@ -286,7 +300,7 @@ void map_request(XEvent *e) {
   XSelectInput(d, w, StructureNotifyMask | EnterWindowMask);
 
   int dummy_x, dummy_y;
-  WIN_SIZE(w, &dummy_x, &dummy_y, &ww, &wh);
+  win_get_size(d, w, &dummy_x, &dummy_y, &ww, &wh);
   win_add(w);
   cur = list->prev;
 
@@ -314,25 +328,26 @@ void run(const Arg arg) {
 }
 
 void input_grab(Window root) {
-  unsigned int i, j, modifiers[] = {0, LockMask, numlock, numlock | LockMask};
+  unsigned int i, j, modifiers[] = {0, LockMask};
   XModifierKeymap *modmap = XGetModifierMapping(d);
   KeyCode code;
 
-  for (i = 0; i < 8; i++)
-    for (int k = 0; k < modmap->max_keypermod; k++)
-      if (modmap->modifiermap[i * modmap->max_keypermod + k] == XKeysymToKeycode(d, 0xff7f)) numlock = (1 << i);
-
   XUngrabKey(d, AnyKey, AnyModifier, root);
 
-  for (i = 0; i < sizeof(keys) / sizeof(*keys); i++)
-    if ((code = XKeysymToKeycode(d, keys[i].keysym)))
-      for (j = 0; j < sizeof(modifiers) / sizeof(*modifiers); j++)
+  for (i = 0; i < sizeof(keys) / sizeof(*keys); i++) {
+    if ((code = XKeysymToKeycode(d, keys[i].keysym))) {
+      for (j = 0; j < sizeof(modifiers) / sizeof(*modifiers); j++) {
         XGrabKey(d, code, keys[i].mod | modifiers[j], root, True, GrabModeAsync, GrabModeAsync);
+      }
+    }
+  }
 
-  for (i = 1; i < 4; i += 2)
-    for (j = 0; j < sizeof(modifiers) / sizeof(*modifiers); j++)
+  for (i = 1; i < 4; i += 2) {
+    for (j = 0; j < sizeof(modifiers) / sizeof(*modifiers); j++) {
       XGrabButton(d, i, MOD | modifiers[j], root, True, ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
                   GrabModeAsync, GrabModeAsync, None, None);
+    }
+  }
 
   XFreeModifiermap(modmap);
 }
