@@ -1,4 +1,4 @@
-project('zenwm', 'cpp', default_options : ['cpp_std=c++20'])
+project('zenwm', 'cpp', default_options : ['cpp_std=c++17'])
 
 sources = ['src/main.cpp']
 include_dirs = include_directories('include')
