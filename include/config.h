@@ -1,22 +1,22 @@
 #pragma once
 
-#include <X11/X.h>
 #include <X11/XF86keysym.h>
 #include <X11/keysym.h>
+#include <core/types.hpp>
 
 #define MOD Mod4Mask
 
-const char *barname = "polybar";
+static const char *barname = "polybar";
 
-const char *term[] = {"kitty", 0};
-const char *menu[] = {"dmenu_run", 0};
-const char *briup[] = {"brightnessctl", "set", "1%+", 0};
-const char *bridown[] = {"brightnessctl", "set", "1%-", 0};
-const char *volup[] = {"pamixer", "-i", "5", 0};
-const char *voldown[] = {"pamixer", "-d", "5", 0};
-const char *volmute[] = {"pamixer", "-t", 0};
+static Command term = {"kitty", 0};
+static Command menu = {"rofi", "-show", "drun", 0};
+static Command briup = {"brightnessctl", "set", "1%+", 0};
+static Command bridown = {"brightnessctl", "set", "1%-", 0};
+static Command volmute = {"pamixer", "-t", 0};
+static Command volup = {"pamixer", "-i", "5", "--allow-boost", 0};
+static Command voldown = {"pamixer", "-d", "5", "--allow-boost", 0};
 
-static struct key keys[] = {
+static Key keys[] = {
     {MOD, XK_q, win_kill, {0}},
     {MOD, XK_c, win_center, {0}},
     {MOD, XK_f, win_fs, {0}},
@@ -24,11 +24,10 @@ static struct key keys[] = {
     {Mod1Mask, XK_Tab, win_next, {0}},
     {Mod1Mask | ShiftMask, XK_Tab, win_prev, {0}},
 
-    {MOD, XK_d, run, {.com = menu}},
+    {MOD, XK_o, run, {.com = menu}},
     {MOD, XK_Return, run, {.com = term}},
-    {MOD | ShiftMask, XK_q, quit, {0}},
+    {MOD, XK_m, quit, {0}},
 
-    // workspaces bindings
     {MOD, XK_1, ws_go, {.i = 1}},
     {MOD | ShiftMask, XK_1, win_to_ws, {.i = 1}},
     {MOD, XK_2, ws_go, {.i = 2}},
