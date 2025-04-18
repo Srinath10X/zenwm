@@ -6,7 +6,7 @@
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(*(arr)))
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define MOD_CLEAN(mask) ((mask) & ~(numlock | LockMask))
+#define MOD_CLEAN(mask) ((mask) & ~(numlock | LockMask) & (ShiftMask | Mod4Mask | Mod1Mask))
 
 inline Window root;
 inline XEvent event;
